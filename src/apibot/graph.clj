@@ -5,9 +5,7 @@
 
 (defrecord ExecutionGraph [init])
 
-(defn make-graph
-  [init]
-  (->ExecutionGraph init))
+(def make-graph ->ExecutionGraph)
 
 (defprotocol Node
   (execute! [this session])

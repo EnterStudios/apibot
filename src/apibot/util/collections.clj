@@ -1,5 +1,7 @@
 (ns apibot.util.collections
-  "Anything here should be considered an extension to clojure core")
+  "Anything here should be considered an extension to clojure collections"
+  (:require [clojure.walk :refer [postwalk-replace
+                                  postwalk]]))
 
 (defn map-keys
   "map-keys maps all keys in m using the given function f"
@@ -18,3 +20,4 @@
   (reduce (fn [reduction [k v]]
             (assoc reduction k (f v)))
           {} m))
+

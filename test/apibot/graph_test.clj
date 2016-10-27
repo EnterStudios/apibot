@@ -9,6 +9,12 @@
   (initialization-node {:successors [(mock-node {:name "authenticate"
                                                 :successors []})]}))
 
+(defn login-and-save-token-graph
+  (initialization-node
+    (:successors
+      [(mock-node {:name "authenticate"
+                   :successors []
+
 (defn =-sessions
   [expected actual]
   (= (map :session expected)
@@ -16,6 +22,7 @@
 
 (expected-when execute-graph-test #(execute-graph! (make-graph %1) %2)
   :when [empty-init-node {}] =-sessions [{}]
+  :when [empty-init-node {:foo 1}] =-sessions [{:foo 1}]
   :when [login-graph {}] =-sessions [{} {}]
   :when [login-graph {:foo 1}] =-sessions [{:foo 1} {:foo 1}])
 
