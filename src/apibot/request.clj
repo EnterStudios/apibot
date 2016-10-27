@@ -1,8 +1,8 @@
-(ns apibot.nodes.request
+(ns apibot.request
   "Creation and execution of request nodes"
   (:require [org.httpkit.client :as http]
             [apibot.util.ex :refer [error]]
-            [apibot.util :refer [map-keys map-vals]]
+            [apibot.util.collections :refer [map-keys map-vals]]
             [apibot.util.json :as json]))
 
 (defn body? [request]
@@ -61,7 +61,7 @@
   (when (post? request) (assert (body? request)))
   request)
 
-(defn build
+(defn make!
   [request]
   (->> (validate! request) ;; perform some validation over the request
        (write-body-to-string) ;; writes the :body to a JSON string
@@ -70,17 +70,3 @@
        (http/request) ;; creates a promise using http/request
        (deref) ;; derefs the promise
        (parse-body))) ;; parses the body back to a clojure map
-
-(let [login-resp (build {:method :post
-                         :url "https://gateway-nl-dev.picnicinternational.com/api/10/user/login"
-                         :body {:client-id 1
-                                :key "foo2@bar.com"
-                                :secret "e807f1fcf82d132f9bb018ca6738a19f"}
-                         :headers {"content-type" "application/json"}})
-      token (get-in login-resp [:headers :x-picnic-auth])
-      _ (println "token is..." (take 30 token))
-      _ (assert (string? token))]
-
-  (build {:method :get
-          :url "https://gateway-nl-dev.picnicinternational.com/api/10/my_store"
-          :headers {"x-picnic-auth" token}}))

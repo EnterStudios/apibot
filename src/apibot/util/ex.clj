@@ -3,5 +3,5 @@
 
 (defn error
   "Shorthand method for throwing a runtime exception"
-  [message]
-  (throw (new RuntimeException message)))
+  [& messages]
+  (throw (new RuntimeException (apply str messages))))

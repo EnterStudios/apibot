@@ -1,4 +1,4 @@
-(ns apibot.util
+(ns apibot.util.collections
   "Anything here should be considered an extension to clojure core")
 
 (defn map-keys

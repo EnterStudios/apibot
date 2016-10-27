@@ -6,5 +6,6 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/data.json "0.2.6"]
                  [presto "0.2.0"]
-                 [javax.el/el-api "2.2"]
+                 [instaparse "1.4.3"]
                  [http-kit "2.2.0"]])
+
