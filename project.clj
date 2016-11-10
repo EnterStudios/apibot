@@ -7,6 +7,6 @@
                  [org.clojure/data.json "0.2.6"]
                  [de.ubercode.clostache/clostache "1.4.0"]
                  [presto "0.2.0"]
-                 [instaparse "1.4.3"]
+                 [criterium "0.4.4"]
                  [http-kit "2.2.0"]])
 

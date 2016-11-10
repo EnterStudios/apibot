@@ -7,6 +7,18 @@
 
 (def make-graph ->ExecutionGraph)
 
+(defn make-linear-graph
+  "Creates a new graph given a set of nodes where the successor of the first node
+  is the second node and so on."
+  [& nodes]
+  (loop [remaining-nodes (reverse nodes)
+         graph (last nodes)]
+    (if (empty? remaining-nodes)
+      (->ExecutionGraph graph)
+      (let [node (first remaining-nodes)]
+        (recur (rest remaining-nodes)
+               (assoc node :successors [graph]))))))
+
 (defprotocol Node
   (execute! [this session])
   (successors [this])
@@ -30,7 +42,6 @@
 
   (succesor? [this session]
     (successor-predicate this session)))
-
 
 (defn map->AbstractNode
   [{:keys [successors consumer successor-predicate name]}]
@@ -119,6 +130,28 @@
     :successor-predicate always-first-successor
     :name name}))
 
+(defn extractor-header-node
+  [{:keys [name header-name as successors]}]
+  (extractor-node
+    {:name name
+     :successors successors
+     :extractor (fn [scope]
+                  (let [header-value (get-in scope [:$response
+                                                    :headers
+                                                    header-name])]
+                    (assoc scope as header-value)))}))
+
+(defn extractor-body-node
+  [{:keys [name extractor as successors]}]
+  (extractor-node
+    {:name name
+     :successors successors
+     :extractor (fn [scope]
+                  (let [body (get-in scope [:$response :body])
+                        extracted (extractor body)]
+                    (assoc scope as extracted)))}))
+
+
 (defn branching-node
   [{:keys [name successor-predicate successors]}]
   (map->AbstractNode
@@ -148,3 +181,8 @@
                resulting-session
                (conj history {:session resulting-session :node node}))))))
 
+(defn execute-node!
+  "Executes a graph with a single node on it.
+  Equivalent to calling execute-graph! with a single node graph."
+  [node session]
+  (execute-graph! (make-graph node) session))

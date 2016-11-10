@@ -7,3 +7,9 @@
   [x]
   (pprint x)
   x)
+
+(defn rand-item
+  "Returns a random item from coll"
+  [coll]
+  (nth (vec coll)
+       (rand-int (count coll))))
