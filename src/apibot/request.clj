@@ -3,6 +3,7 @@
   (:require [org.httpkit.client :as http]
             [apibot.util.ex :refer [error]]
             [apibot.util.collections :refer [map-keys map-vals]]
+            [apibot.util.lang :refer [spy]]
             [apibot.util.json :as json]))
 
 (defn body? [request]
@@ -31,7 +32,7 @@
   [request]
   (let [body (:body request)]
     (if body
-      (assoc request :body (json/write (:body request)))
+      (assoc request :body (spy (json/write (:body request))))
       request)))
 
 (defn write-headers-to-string
@@ -56,6 +57,8 @@
 
 (defn validate!
   [request]
+  (println "Validating Request")
+  (clojure.pprint/pprint request)
   (assert (url? request))
   (when (get? request) (assert (not (body? request))))
   (when (post? request) (assert (body? request)))

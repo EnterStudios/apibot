@@ -16,7 +16,6 @@
   (try
     (f!)
     (catch clojure.lang.ExceptionInfo e
-      (println (:data e))
       (if-let [empty-value (:apibot.empty.value (ex-data e))]
         empty-value
         (throw e)))))
