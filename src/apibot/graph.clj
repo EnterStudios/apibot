@@ -133,24 +133,23 @@
 (defn extractor-header-node
   [{:keys [name header-name as successors]}]
   (extractor-node
-    {:name name
-     :successors successors
-     :extractor (fn [scope]
-                  (let [header-value (get-in scope [:$response
-                                                    :headers
-                                                    header-name])]
-                    (assoc scope as header-value)))}))
+   {:name name
+    :successors successors
+    :extractor (fn [scope]
+                 (let [header-value (get-in scope [:$response
+                                                   :headers
+                                                   header-name])]
+                   (assoc scope as header-value)))}))
 
 (defn extractor-body-node
   [{:keys [name extractor as successors]}]
   (extractor-node
-    {:name name
-     :successors successors
-     :extractor (fn [scope]
-                  (let [body (get-in scope [:$response :body])
-                        extracted (extractor body)]
-                    (assoc scope as extracted)))}))
-
+   {:name name
+    :successors successors
+    :extractor (fn [scope]
+                 (let [body (get-in scope [:$response :body])
+                       extracted (extractor body)]
+                   (assoc scope as extracted)))}))
 
 (defn branching-node
   [{:keys [name successor-predicate successors]}]
