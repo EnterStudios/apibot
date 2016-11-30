@@ -32,4 +32,3 @@
   {:pre [(coll? obj)]
    :post [(string? %)]}
   (json/write-str obj :key-fn write-key))
-

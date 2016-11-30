@@ -1,20 +1,39 @@
 (ns apibot.graph-test
   "Tests for apibot.graph"
-  (:require [apibot.graph :refer :all]
+  (:require [apibot.mocks :refer [mock-server mock-server-url]]
+            [apibot.nodes.assertions :refer [node-assert-http-status]]
+            [apibot.nodes.request :refer [http-request-node]]
+            [apibot.graph :refer :all]
+            [mount.core :as mount]
+            [clojure.test :refer [deftest is]]
             [presto.core :refer [expected-when]]))
 
-(def empty-init-node (initialization-node {:successors []}))
+(def node-init
+  (extractor-node {:name "extract nothing"
+                   :extractor (fn [scope] scope)}))
 
-(def login-graph
-  (initialization-node {:successors [(mock-node {:name "authenticate"
-                                                 :successors []})]}))
-(defn =-sessions
-  [expected actual]
-  (= (map :session expected)
-     actual))
+(def node-end (termination-node))
+(def node-extract-token
+  (extractor-node {:name "extract token"
+                   :extractor (fn [scope] scope)}))
+(def node-http
+  (http-request-node
+   {:name "get page"
+    :request-template {:method :get
+                       :headers {}
+                       :url (mock-server-url)}}))
+(def history
+  (try
+    (mount/start)
+    (execute-graph!
+     (make-linear-graph
+      node-init
+      node-http
+      (node-assert-http-status {:status 200})
+      node-extract-token
+      node-end)
+     {})
+    (finally (mount/stop))))
 
-(expected-when execute-graph-test #(execute-graph! (make-graph %1) %2)
-               :when [empty-init-node {}] =-sessions [{}]
-               :when [empty-init-node {:foo 1}] =-sessions [{:foo 1}]
-               :when [login-graph {}] =-sessions [{} {}]
-               :when [login-graph {:foo 1}] =-sessions [{:foo 1} {:foo 1}])
+(deftest verify-execution
+  (is (= (count history) 6) (str "History: " (keys history))))

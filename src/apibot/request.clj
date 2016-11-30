@@ -54,8 +54,8 @@
 
 (defn validate!
   [request]
-  (assert (url? request))
-  (when (get? request) (assert (not (body? request))))
+  (assert (url? request) "Request must have a :url")
+  (when (get? request) (assert (not (body? request)) "get requests must not have a :body"))
   (when (post? request) (assert (body? request)))
   request)
 

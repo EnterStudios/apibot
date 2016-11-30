@@ -1,28 +1,49 @@
 (ns apibot.graph
   "The execution graph"
   (:require [apibot.request :as request]
+            [apibot.util.lang :refer [maybe-get! arg-count]]
+            [cats.monad.maybe :as maybe]
             [apibot.el :as el]))
-
-(defrecord ExecutionGraph [init])
-
-(def make-graph ->ExecutionGraph)
 
 (defn make-linear-graph
   "Creates a new graph given a set of nodes where the successor of the first node
   is the second node and so on."
   [& nodes]
-  (loop [remaining-nodes (reverse nodes)
+  {:pre [(and "at least one" (>= (count nodes) 1))
+         (and "no duplicates" (= (count nodes) (count (set nodes))))]}
+  (loop [remaining-nodes (rest (reverse nodes))
          graph (last nodes)]
     (if (empty? remaining-nodes)
-      (->ExecutionGraph graph)
+      graph
       (let [node (first remaining-nodes)]
         (recur (rest remaining-nodes)
                (assoc node :successors [graph]))))))
 
 (defprotocol Node
-  (execute! [this session])
-  (successors [this])
-  (succesor? [this session]))
+  "A Node is an immutable datastructure that represents a point in an execution graph.
+  Nodes now 3 things:
+  1. How to execute themselves (via the execute! function)
+  2. Their statuc successors. A list of possible nodes that can follow after the
+  execution of this.
+  3. Their instance successor. A (maybe) Node that can follow after the execution
+  of this."
+
+  (execute!
+    [this scope]
+    "Executes a Node given the current scope.
+    Arguments:
+    - this: the node.
+    - scope: the current scope.")
+
+  (successors
+    [this]
+    "Returns a possibly empty list of possible successors for this node")
+
+  (succesor
+    [this scope]
+    "Given the current scope, returns the successor to this node.
+    The result is a (maybe/just) or (maybe/nothing) if there are no
+    successors."))
 
 (defrecord AbstractNode
            [;; A list of possible successor nodes that this node is aware of
@@ -35,29 +56,34 @@
             name]
   Node
 
-  (execute! [this session]
-    (consumer this session))
+  (execute! [this scope]
+    (consumer this scope))
 
   (successors [this] (:successors this))
 
-  (succesor? [this session]
-    (successor-predicate this session)))
+  (succesor [this scope]
+    (successor-predicate this scope)))
+
+(defmethod clojure.core/print-method AbstractNode [x writer]
+  (.write writer (str "Node(" (:name x) ")->" (:successors x))))
 
 (defn map->AbstractNode
-  [{:keys [successors consumer successor-predicate name]}]
+  [{:keys [successors consumer successor-predicate name] :or {successors []}}]
   {:pre [(vector? successors)
          (fn? consumer)
          (fn? successor-predicate)
+         (= (arg-count consumer) 2)
+         (= (arg-count successor-predicate) 2)
          (string? name)]}
   (->AbstractNode successors consumer successor-predicate name))
 
-(defn- void-consumer [node session] session)
+(defn- void-consumer [node scope] scope)
 
-(defn- always-first-successor [node session]
-  (first (:successors node)))
+(defn always-first-successor [node scope]
+  (maybe/seq->maybe (:successors node)))
 
 (defn initialization-node
-  [{:keys [successors]}]
+  [{:keys [successors] :or {successors []}}]
   (map->AbstractNode
    {:successors successors
     :consumer void-consumer
@@ -65,64 +91,21 @@
     :name "Initialization"}))
 
 (defn termination-node
+  "A node that does nothing and has no successors"
   []
   (map->AbstractNode
    {:successors []
     :consumer void-consumer
-    :successor-predicate (fn [this session] nil)
-    :name "Termination"}))
-
-(defn http-request-node
-  "A node which executes by making an http request
-
-  Arguments
-  - name: the node's name
-  - successors: a list of successors
-  - request-template: a map describing the request, see example.
-
-  Example:
-  (http-request-node
-    {:name 'get google'
-     :successors []
-     :request-template {:method :get
-                        :url 'https://google.com'}})
-
-  (http-request-node
-    {:name 'get google'
-     :successors []
-     :request-template {:method :get
-                        :url 'https://google.com'}})
-  "
-  [{:keys [name successors request-template]}]
-  (map->AbstractNode
-   {:successors successors
-    :consumer (fn [this scope]
-                (let [response (->> (el/resolve scope request-template)
-                                    (request/make!))]
-                  (assoc scope :$response response)))
     :successor-predicate always-first-successor
-    :name name}))
-
-(defn assertion-node
-  [{:keys [name assertion message-template successors]}]
-  (map->AbstractNode
-   {:successors successors
-    :consumer (fn [this scope]
-                (if (assertion this scope)
-                  scope
-                  (assoc scope :$assertion-failed
-                         {:message (el/resolve scope message-template)})))
-    :successor-predicate (fn [this scope]
-                           (if (contains? scope :$assertion-failed)
-                             nil (first (:successors this))))
-    :name name}))
+    :name "Termination"}))
 
 (defn extractor-node
   "Arguments
   - name: the name of this extractor
   - extractor: a fn scope -> scope
   - successors: the successors to this node"
-  [{:keys [name extractor successors]}]
+  [{:keys [name extractor successors] :or {successors []}}]
+  {:pre [(= (arg-count extractor) 1)]}
   (map->AbstractNode
    {:successors successors
     :consumer (fn [this scope]
@@ -130,8 +113,8 @@
     :successor-predicate always-first-successor
     :name name}))
 
-(defn extractor-header-node
-  [{:keys [name header-name as successors]}]
+(defn node-extract-header
+  [{:keys [name header-name as successors] :or {successors []}}]
   (extractor-node
    {:name name
     :successors successors
@@ -141,8 +124,8 @@
                                                    header-name])]
                    (assoc scope as header-value)))}))
 
-(defn extractor-body-node
-  [{:keys [name extractor as successors]}]
+(defn node-extract-body
+  [{:keys [name extractor as successors] :or {successors []}}]
   (extractor-node
    {:name name
     :successors successors
@@ -152,36 +135,39 @@
                    (assoc scope as extracted)))}))
 
 (defn branching-node
-  [{:keys [name successor-predicate successors]}]
+  [{:keys [name successor-predicate successors] :or {successors []}}]
   (map->AbstractNode
    {:successors successors
     :consumer void-consumer
     :successor-predicate successor-predicate
     :name name}))
 
-(defn mock-node
-  [{:keys [name successor]}]
-  (map->AbstractNode
-   {:successors [successor]
-    :consumer void-consumer
-    :successor-predicate always-first-successor
-    :name name}))
-
 (defn execute-graph!
-  [graph session]
-  (loop [node (:init graph)
-         session session
-         history [{:session session :node (initialization-node node)}]]
-    (let [resulting-session (execute! node session)
-          succesor? (succesor? node resulting-session)]
-      (if (not succesor?)
-        (conj history {:session resulting-session :node node})
-        (recur succesor?
-               resulting-session
-               (conj history {:session resulting-session :node node}))))))
+  "Executes a graph by recursively calling execute! and then
+  executing the first successor from starting-node.
+  This execution assumes that nodes produce no more than one successor.
 
-(defn execute-node!
-  "Executes a graph with a single node on it.
-  Equivalent to calling execute-graph! with a single node graph."
-  [node session]
-  (execute-graph! (make-graph node) session))
+  The execution finishes either when the current node has no more
+  successors or if a loop is found.
+
+  Arguments:
+  - starting-node: a Node
+  - scope: The initial scope.
+  "
+  [starting-node scope]
+  (loop [visited? #{}
+         node starting-node
+         scope scope
+         history [{:scope scope :node (initialization-node node)}]]
+    (println "Executing node:" (:name node))
+    (if (visited? node)
+      history
+      (let [resulting-scope (execute! node scope)
+            maybe-succesor (succesor node resulting-scope)]
+        (println "Successor: " maybe-succesor)
+        (if (maybe/nothing? maybe-succesor)
+          (conj history {:scope resulting-scope :node node})
+          (recur (conj visited? node)
+                 (maybe-get! maybe-succesor)
+                 resulting-scope
+                 (conj history {:scope resulting-scope :node node})))))))
